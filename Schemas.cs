@@ -19,6 +19,15 @@ internal static class Schemas
         new DataField<int>("static_size_bytes")
     );
 
+    public static readonly ParquetSchema StaticFields = new(
+        new DataField<int>("runtime_id"),
+        new DataField<int>("type_id"),
+        new DataField<string>("field_name"),
+        new DataField<int>("field_size"),
+        new DataField<int>("field_offset"),
+        new DataField<ulong>("to_object_id")
+    );
+
     public static readonly ParquetSchema Objects = new(
         new DataField<ulong>("object_id"),
         new DataField<int>("runtime_id"),

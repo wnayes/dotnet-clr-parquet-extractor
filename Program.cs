@@ -70,6 +70,14 @@ static async Task WriteObjectDataParquetAsync(
     var isValueType = new List<bool>(ListInitialCapacity);
     var staticSizes = new List<int>(ListInitialCapacity);
 
+    string staticFieldsOutPath = Path.Combine(outputDirectory, "static_fields.parquet");
+    var staticFieldRuntimeIds = new List<int>(ListInitialCapacity);
+    var staticFieldTypeIds = new List<int>(ListInitialCapacity);
+    var staticFieldNames = new List<string>(ListInitialCapacity);
+    var staticFieldSizes = new List<int>(ListInitialCapacity);
+    var staticFieldOffsets = new List<int>(ListInitialCapacity);
+    var staticFieldToObjectIds = new List<ulong>(ListInitialCapacity);
+
     string objectsOutPath = Path.Combine(outputDirectory, "objects.parquet");
     var objIds = new List<ulong>(ListInitialCapacity);
     var objRuntimeIds = new List<int>(ListInitialCapacity);
@@ -111,6 +119,25 @@ static async Task WriteObjectDataParquetAsync(
                 isString.Add(type.IsString);
                 isValueType.Add(type.IsValueType);
                 staticSizes.Add(type.StaticSize);
+
+                foreach (ClrStaticField staticField in type.StaticFields)
+                {
+                    staticFieldRuntimeIds.Add(runtimeId);
+                    staticFieldTypeIds.Add(typeId);
+                    staticFieldNames.Add(staticField.Name ?? "<unknown>");
+                    staticFieldSizes.Add(staticField.Size);
+                    staticFieldOffsets.Add(staticField.Offset);
+                    if (staticField.IsObjectReference)
+                    {
+                        // Always returns zero? https://github.com/microsoft/clrmd/issues/1313
+                        staticFieldToObjectIds.Add(
+                            staticField.Read<ulong>(clrRuntime.AppDomains.First()));
+                    }
+                    else
+                    {
+                        staticFieldToObjectIds.Add(0);
+                    }
+                }
             }
 
             objIds.Add(obj.Address);
@@ -150,6 +177,19 @@ static async Task WriteObjectDataParquetAsync(
         await typesGroupWriter.WriteColumnAsync(new DataColumn(Schemas.Types.DataFields[5], isString.ToArray()));
         await typesGroupWriter.WriteColumnAsync(new DataColumn(Schemas.Types.DataFields[6], isValueType.ToArray()));
         await typesGroupWriter.WriteColumnAsync(new DataColumn(Schemas.Types.DataFields[7], staticSizes.ToArray()));
+    }
+
+    using (Stream staticFieldsFileStream = File.Create(staticFieldsOutPath))
+    using (ParquetWriter staticFieldsWriter = await ParquetWriter.CreateAsync(Schemas.StaticFields, staticFieldsFileStream, new ParquetOptions(), false))
+    using (ParquetRowGroupWriter staticFieldsGroupWriter = staticFieldsWriter.CreateRowGroup())
+    {
+        staticFieldsWriter.CompressionMethod = CompressionMethod.Zstd;
+        await staticFieldsGroupWriter.WriteColumnAsync(new DataColumn(Schemas.StaticFields.DataFields[0], staticFieldRuntimeIds.ToArray()));
+        await staticFieldsGroupWriter.WriteColumnAsync(new DataColumn(Schemas.StaticFields.DataFields[1], staticFieldTypeIds.ToArray()));
+        await staticFieldsGroupWriter.WriteColumnAsync(new DataColumn(Schemas.StaticFields.DataFields[2], staticFieldNames.ToArray()));
+        await staticFieldsGroupWriter.WriteColumnAsync(new DataColumn(Schemas.StaticFields.DataFields[3], staticFieldSizes.ToArray()));
+        await staticFieldsGroupWriter.WriteColumnAsync(new DataColumn(Schemas.StaticFields.DataFields[4], staticFieldOffsets.ToArray()));
+        await staticFieldsGroupWriter.WriteColumnAsync(new DataColumn(Schemas.StaticFields.DataFields[5], staticFieldToObjectIds.ToArray()));
     }
 
     using (Stream objectsFileStream = File.Create(objectsOutPath))
