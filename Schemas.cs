@@ -53,6 +53,14 @@ internal static class Schemas
         new DataField<int>("runtime_id")
     );
 
+    public static readonly ParquetSchema Dominators = new(
+        new DataField<ulong>("object_id"),
+        new DataField<ulong>("immediate_dominator_id"),
+        new DataField<ulong>("dominated_size_bytes"),
+        new DataField<int>("dominated_count"),
+        new DataField<int>("runtime_id")
+    );
+
     public static readonly ParquetSchema Modules = new(
         new DataField<string>("file_name"),
         new DataField<bool>("is_managed"),

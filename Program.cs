@@ -40,6 +40,7 @@ foreach (ClrInfo runtime in dataTarget.ClrVersions)
     await WriteObjectDataParquetAsync(outputDirectory, clr, runtimeId, objectsDb, stringsDb, dataTarget);
     await WriteHandlesParquetAsync(outputDirectory, clr, runtimeId, dataTarget);
     await WriteRootsParquetAsync(outputDirectory, clr, runtimeId, dataTarget);
+    await WriteDominatorsParquetAsync(outputDirectory, clr, runtimeId);
 }
 
 await objectsDb.CompleteAndCloseAsync();
@@ -298,6 +299,30 @@ static async Task WriteRuntimesParquetAsync(string outputDirectory, List<Runtime
         new DataColumn(Schemas.Runtimes.DataFields[1], runtimeInfos.Select(ri => ri.Flavor).ToArray()));
     await groupWriter.WriteColumnAsync(
         new DataColumn(Schemas.Runtimes.DataFields[2], runtimeInfos.Select(ri => ri.Version).ToArray()));
+}
+
+static async Task WriteDominatorsParquetAsync(string outputDirectory, ClrRuntime runtime, int runtimeId)
+{
+    string outPath = Path.Combine(outputDirectory, "dominators.parquet");
+    using Stream fileStream = File.Create(outPath);
+    using ParquetWriter writer = await ParquetWriter.CreateAsync(Schemas.Dominators, fileStream, new ParquetOptions(), false);
+    using ParquetRowGroupWriter groupWriter = writer.CreateRowGroup();
+
+    var progress = new Progress<string>(msg => Console.WriteLine(msg));
+    var analyzer = new OptimizedDominatorAnalyzer(runtime.Heap);
+    analyzer.ComputeDominators(progress);
+    var dominatorData = analyzer.GetAllDominatorData();
+
+    await groupWriter.WriteColumnAsync(
+        new DataColumn(Schemas.Dominators.DataFields[0], dominatorData.ObjectAddresses));
+    await groupWriter.WriteColumnAsync(
+        new DataColumn(Schemas.Dominators.DataFields[1], dominatorData.ImmediateDominators));
+    await groupWriter.WriteColumnAsync(
+        new DataColumn(Schemas.Dominators.DataFields[2], dominatorData.DominatedSizes));
+    await groupWriter.WriteColumnAsync(
+        new DataColumn(Schemas.Dominators.DataFields[3], dominatorData.DominatedCounts));
+    await groupWriter.WriteColumnAsync(
+        new DataColumn(Schemas.Dominators.DataFields[4], Enumerable.Repeat(runtimeId, dominatorData.ObjectAddresses.Length).ToArray()));
 }
 
 static async Task WriteObjectBlobToDatabaseAsync(ObjectsDb objectsDb, ClrObject obj, DataTarget dataTarget)
