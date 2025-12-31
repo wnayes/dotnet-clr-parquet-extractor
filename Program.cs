@@ -39,6 +39,7 @@ foreach (ClrInfo runtime in dataTarget.ClrVersions)
 
     await WriteObjectDataParquetAsync(outputDirectory, clr, runtimeId, objectsDb, stringsDb, dataTarget);
     await WriteHandlesParquetAsync(outputDirectory, clr, runtimeId, dataTarget);
+    await WriteRootsParquetAsync(outputDirectory, clr, runtimeId, dataTarget);
 }
 
 await objectsDb.CompleteAndCloseAsync();
@@ -219,6 +220,45 @@ static async Task WriteHandlesParquetAsync(
         await handlesGroupWriter.WriteColumnAsync(new DataColumn(Schemas.Handles.DataFields[5], handleRootKinds.ToArray()));
         await handlesGroupWriter.WriteColumnAsync(new DataColumn(Schemas.Handles.DataFields[6], handleIsInteriors.ToArray()));
         await handlesGroupWriter.WriteColumnAsync(new DataColumn(Schemas.Handles.DataFields[7], handleRuntimeIds.ToArray()));
+    }
+}
+
+static async Task WriteRootsParquetAsync(
+    string outputDirectory,
+    ClrRuntime clrRuntime,
+    int runtimeId,
+    DataTarget dataTarget
+)
+{
+    const int ListInitialCapacity = 8192;
+
+    string objectsOutPath = Path.Combine(outputDirectory, "objects.parquet");
+    var handleAddresses = new List<ulong>(ListInitialCapacity);
+    var handleObjectAddresses = new List<ulong>(ListInitialCapacity);
+    var handleRootKinds = new List<byte>(ListInitialCapacity);
+    var handleIsInteriors = new List<bool>(ListInitialCapacity);
+    var handleRuntimeIds = new List<int>(ListInitialCapacity);
+
+    foreach (ClrRoot root in clrRuntime.Heap.EnumerateRoots())
+    {
+        handleAddresses.Add(root.Address);
+        handleObjectAddresses.Add(root.Object.Address);
+        handleRootKinds.Add((byte)root.RootKind);
+        handleIsInteriors.Add(root.IsInterior);
+        handleRuntimeIds.Add(runtimeId);
+    }
+
+    string rootsOutPath = Path.Combine(outputDirectory, "roots.parquet");
+    using (Stream rootsFileStream = File.Create(rootsOutPath))
+    using (ParquetWriter rootsWriter = await ParquetWriter.CreateAsync(Schemas.Roots, rootsFileStream, new ParquetOptions(), false))
+    using (ParquetRowGroupWriter rootsGroupWriter = rootsWriter.CreateRowGroup())
+    {
+        rootsWriter.CompressionMethod = CompressionMethod.Zstd;
+        await rootsGroupWriter.WriteColumnAsync(new DataColumn(Schemas.Roots.DataFields[0], handleAddresses.ToArray()));
+        await rootsGroupWriter.WriteColumnAsync(new DataColumn(Schemas.Roots.DataFields[1], handleObjectAddresses.ToArray()));
+        await rootsGroupWriter.WriteColumnAsync(new DataColumn(Schemas.Roots.DataFields[2], handleRootKinds.ToArray()));
+        await rootsGroupWriter.WriteColumnAsync(new DataColumn(Schemas.Roots.DataFields[3], handleIsInteriors.ToArray()));
+        await rootsGroupWriter.WriteColumnAsync(new DataColumn(Schemas.Roots.DataFields[4], handleRuntimeIds.ToArray()));
     }
 }
 

@@ -45,6 +45,14 @@ internal static class Schemas
         new DataField<int>("runtime_id")
     );
 
+    public static readonly ParquetSchema Roots = new(
+        new DataField<ulong>("root_address"),
+        new DataField<ulong>("object_id"),
+        new DataField<byte>("root_kind"),
+        new DataField<bool>("is_interior"),
+        new DataField<int>("runtime_id")
+    );
+
     public static readonly ParquetSchema Modules = new(
         new DataField<string>("file_name"),
         new DataField<bool>("is_managed"),
